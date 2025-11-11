@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('home') }}">Home</a></li>
+            <li class="breadcrumb-item active">Carrinho</li>
+        </ol>
+    </nav>
+
+    <h2 class="fw-bold mb-4">
+        <i class="fas fa-shopping-cart me-2"></i>Meu Carrinho
+    </h2>
+
+    {% if carrinho %}
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Itens no Carrinho ({{ carrinho|length }})</h5>
+                </div>
+                <div class="card-body">
+                    {% for item in carrinho %}
+                    <div class="card mb-3 border-0 shadow-sm">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-1">
+                                    <div class="text-center py-3 bg-light rounded">
+                                        <i class="fas fa-pills text-primary"></i>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6 class="fw-bold mb-1">{{ item.nome }}</h6>
+                                    <small class="text-muted">{{ item.marca }}</small>
+                                </div>
+                                <div class="col-md-2">
+                                    <strong class="text-success">R$ {{ "%.2f"|format(item.preco) }}</strong>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="input-group input-group-sm">
+                                        <button class="btn btn-outline-secondary" 
+                                                onclick="atualizarQuantidade({{ item.id }}, {{ item.quantidade - 1 }})"
+                                                {% if item.quantidade <= 1 %}disabled{% endif %}>
+                                            -
+                                        </button>
+                                        <input type="number" class="form-control text-center" 
+                                               value="{{ item.quantidade }}" min="1" 
+                                               onchange="atualizarQuantidade({{ item.id }}, this.value)">
+                                        <button class="btn btn-outline-secondary" 
+                                                onclick="atualizarQuantidade({{ item.id }}, {{ item.quantidade + 1 }})">
+                                            +
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 text-end">
+                                    <strong class="text-primary">R$ {{ "%.2f"|format(item.preco * item.quantidade) }}</strong>
+                                    <br>
+                                    <button class="btn btn-danger btn-sm mt-1" 
+                                            onclick="removerDoCarrinho({{ item.id }})">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <div class="card sticky-top" style="top: 20px;">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Resumo do Pedido</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Subtotal:</span>
+                        <span>R$ {{ "%.2f"|format(total) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Frete:</span>
+                        <span class="text-success">Grátis</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between mb-3">
+                        <strong>Total:</strong>
+                        <strong class="text-success fs-5">R$ {{ "%.2f"|format(total) }}</strong>
+                    </div>
+                    
+                    <button class="btn btn-success w-100 py-3 fw-bold" onclick="finalizarPedido()">
+                        <i class="fas fa-credit-card me-2"></i>Finalizar Pedido
+                    </button>
+                    
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('home') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-arrow-left me-2"></i>Continuar Comprando
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card text-center py-5">
+        <div class="card-body">
+            <i class="fas fa-shopping-cart fa-4x text-muted mb-4"></i>
+            <h3 class="text-muted mb-3">Carrinho Vazio</h3>
+            <p class="text-muted mb-4">Adicione produtos ao carrinho para continuar.</p>
+            <a href="{{ url_for('home') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-shopping-bag me-2"></i>Fazer Compras
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function atualizarQuantidade(produtoId, novaQuantidade) {
+    if (novaQuantidade < 1) return;
+    
+    fetch('/atualizar-quantidade', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            produto_id: produtoId,
+            quantidade: novaQuantidade
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            showAlert('❌ ' + data.message, 'danger');
+        }
+    });
+}
+
+function removerDoCarrinho(produtoId) {
+    fetch(`/remover-carrinho/${produtoId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('carrinho-count').textContent = data.carrinho_count;
+                location.reload();
+            } else {
+                showAlert('❌ ' + data.message, 'danger');
+            }
+        });
+}
+
+function finalizarPedido() {
+    fetch('/finalizar-pedido', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            if (data.needs_address) {
+                window.location.href = `/endereco-pagamento/${data.pedido_id}`;
+            } else {
+                window.location.href = `/pagamento/${data.pedido_id}`;
+            }
+        } else {
+            showAlert('❌ ' + data.message, 'danger');
+        }
+    });
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 3000);
+}
+</script>
+{% endblock %}
