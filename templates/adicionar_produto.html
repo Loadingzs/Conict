@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white text-center">
+                <h4 class="mb-0"><i class="fas fa-plus me-2"></i>Adicionar Produto</h4>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('adicionar_produto') }}" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="nome" class="form-label">Nome do Produto *</label>
+                            <input type="text" class="form-control" id="nome" name="nome" required>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="marca" class="form-label">Marca *</label>
+                            <input type="text" class="form-control" id="marca" name="marca" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="descricao" class="form-label">Descrição</label>
+                        <textarea class="form-control" id="descricao" name="descricao" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="preco_venda" class="form-label">Preço de Venda *</label>
+                            <input type="number" step="0.01" class="form-control" id="preco_venda" name="preco_venda" required>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="quantidade" class="form-label">Quantidade em Estoque *</label>
+                            <input type="number" class="form-control" id="quantidade" name="quantidade" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="imagem" class="form-label">Imagem do Produto</label>
+                        <input type="file" class="form-control" id="imagem" name="imagem" accept="image/*">
+                        <div class="form-text">Formatos permitidos: JPG, PNG, GIF. Tamanho máximo: 16MB</div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100 py-2">
+                        <i class="fas fa-save me-2"></i>Adicionar Produto
+                    </button>
+                </form>
+                
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Voltar para Home
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Preview da imagem antes do upload
+document.getElementById('imagem').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            // Criar preview
+            let preview = document.getElementById('image-preview');
+            if (!preview) {
+                preview = document.createElement('div');
+                preview.id = 'image-preview';
+                preview.className = 'mt-3 text-center';
+                document.querySelector('form').insertBefore(preview, document.querySelector('button'));
+            }
+            preview.innerHTML = `
+                <img src="${e.target.result}" class="img-thumbnail" style="max-height: 200px;">
+                <p class="text-muted mt-2">Preview da imagem</p>
+            `;
+        }
+        reader.readAsDataURL(file);
+    }
+});
+</script>
+{% endblock %}

@@ -27,7 +27,15 @@
                             <div class="row align-items-center">
                                 <div class="col-md-1">
                                     <div class="text-center py-3 bg-light rounded">
-                                        <i class="fas fa-pills text-primary"></i>
+                                        <!-- IMAGEM DO PRODUTO NO CARRINHO -->
+                                        {% if item.imagem and item.imagem != 'default.jpg' %}
+                                            <img src="{{ url_for('static', filename='uploads/' + item.imagem) }}" 
+                                                 alt="{{ item.nome }}" 
+                                                 class="img-fluid rounded" 
+                                                 style="max-height: 40px; object-fit: contain;">
+                                        {% else %}
+                                            <i class="fas fa-pills text-primary"></i>
+                                        {% endif %}
                                     </div>
                                 </div>
                                 <div class="col-md-3">

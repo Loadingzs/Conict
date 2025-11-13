@@ -1,6 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_mysqldb import MySQL
 import MySQLdb.cursors
+import os
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
@@ -11,19 +14,32 @@ app.config['MYSQL_PASSWORD'] = '1234'
 app.config['MYSQL_DB'] = 'sistema_farmacia'
 app.secret_key = 'abcd1234'
 
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
 mysql = MySQL(app)
 
-# Inicializar carrinho na sessão
+
+
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
 def init_carrinho():
     if 'carrinho' not in session:
         session['carrinho'] = []
 
-# Calcular total do carrinho
+
 def calcular_total_carrinho():
     total = 0
     for item in session['carrinho']:
         total += item['preco'] * item['quantidade']
     return total
+
 
 @app.route("/")
 def home():
@@ -63,6 +79,7 @@ def login():
         cursor.close()
 
         if cliente:
+            # Verificar senha (sem hash por enquanto - implementar depois)
             if cliente['senha'] == senha:
                 session['loggedin'] = True
                 session['id'] = cliente['id']
@@ -183,13 +200,14 @@ def adicionar_carrinho(produto_id):
                 'carrinho_count': len(session['carrinho'])
             })
     
-    # Adicionar novo item
+    # Adicionar novo item COM IMAGEM
     novo_item = {
         'id': produto['id'],
         'nome': produto['nome'],
         'marca': produto['marca'],
         'preco': float(produto['preco_venda']),
-        'quantidade': 1
+        'quantidade': 1,
+        'imagem': produto['imagem']
     }
     
     session['carrinho'].append(novo_item)
@@ -488,6 +506,129 @@ def endereco_pagamento(pedido_id):
         return redirect(url_for('login'))
     
     return render_template("endereco.html", pedido_id=pedido_id)
+
+
+@app.route("/admin/adicionar-produto", methods=["GET", "POST"])
+def adicionar_produto():
+    if 'loggedin' not in session:
+        flash("⚠️ Acesso restrito!", "warning")
+        return redirect(url_for('login'))
+    
+    if request.method == "POST":
+        nome = request.form["nome"]
+        marca = request.form["marca"]
+        descricao = request.form["descricao"]
+        preco_venda = request.form["preco_venda"]
+        quantidade = request.form["quantidade"]
+        
+        # Processar upload da imagem
+        imagem = 'default.jpg'
+        if 'imagem' in request.files:
+            file = request.files['imagem']
+            if file and file.filename != '' and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                # Adicionar timestamp para evitar conflitos
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_")
+                filename = timestamp + filename
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                imagem = filename
+        
+        cursor = mysql.connection.cursor()
+        try:
+            # Inserir produto
+            cursor.execute("""
+                INSERT INTO produtos (nome, marca, descricao, preco_venda, imagem) 
+                VALUES (%s, %s, %s, %s, %s)
+            """, (nome, marca, descricao, preco_venda, imagem))
+            
+            produto_id = cursor.lastrowid
+            
+            # Inserir estoque
+            cursor.execute("""
+                INSERT INTO estoque (produto_id, quantidade) 
+                VALUES (%s, %s)
+            """, (produto_id, quantidade))
+            
+            mysql.connection.commit()
+            flash("✅ Produto adicionado com sucesso!", "success")
+            return redirect(url_for('home'))
+            
+        except Exception as e:
+            mysql.connection.rollback()
+            flash(f"❌ Erro ao adicionar produto: {str(e)}", "danger")
+        finally:
+            cursor.close()
+    
+    return render_template("adicionar_produto.html")
+
+@app.route("/admin/editar-produto/<int:id>", methods=["GET", "POST"])
+def editar_produto(id):
+    if 'loggedin' not in session:
+        flash("⚠️ Acesso restrito!", "warning")
+        return redirect(url_for('login'))
+    
+    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    
+    if request.method == "POST":
+        nome = request.form["nome"]
+        marca = request.form["marca"]
+        descricao = request.form["descricao"]
+        preco_venda = request.form["preco_venda"]
+        quantidade = request.form["quantidade"]
+        
+        # Processar upload da nova imagem
+        nova_imagem = None
+        if 'imagem' in request.files:
+            file = request.files['imagem']
+            if file and file.filename != '' and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_")
+                filename = timestamp + filename
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                nova_imagem = filename
+        
+        try:
+            if nova_imagem:
+                cursor.execute("""
+                    UPDATE produtos 
+                    SET nome=%s, marca=%s, descricao=%s, preco_venda=%s, imagem=%s 
+                    WHERE id=%s
+                """, (nome, marca, descricao, preco_venda, nova_imagem, id))
+            else:
+                cursor.execute("""
+                    UPDATE produtos 
+                    SET nome=%s, marca=%s, descricao=%s, preco_venda=%s 
+                    WHERE id=%s
+                """, (nome, marca, descricao, preco_venda, id))
+            
+            # Atualizar estoque
+            cursor.execute("""
+                UPDATE estoque 
+                SET quantidade=%s 
+                WHERE produto_id=%s
+            """, (quantidade, id))
+            
+            mysql.connection.commit()
+            flash("✅ Produto atualizado com sucesso!", "success")
+            return redirect(url_for('detalhe_produto', id=id))
+            
+        except Exception as e:
+            mysql.connection.rollback()
+            flash(f"❌ Erro ao atualizar produto: {str(e)}", "danger")
+    
+    # Carregar dados do produto
+    cursor.execute("""
+        SELECT p.*, e.quantidade 
+        FROM produtos p 
+        LEFT JOIN estoque e ON p.id = e.produto_id 
+        WHERE p.id = %s
+    """, (id,))
+    produto = cursor.fetchone()
+    cursor.close()
+    
+    return render_template("editar_produto.html", produto=produto)
 
 if __name__ == "__main__":
     app.run(debug=True)
