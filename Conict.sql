@@ -74,3 +74,11 @@ INSERT INTO produtos (nome, marca, descricao, preco_venda) VALUES
 
 INSERT INTO estoque (produto_id, quantidade) VALUES 
 (1, 100), (2, 150), (3, 80), (4, 60), (5, 120), (6, 90), (7, 200), (8, 180);
+
+
+-- Adicionar colunas necessárias
+ALTER TABLE produtos ADD COLUMN imagem VARCHAR(255) DEFAULT 'default.jpg';
+ALTER TABLE clientes ADD COLUMN tipo ENUM('cliente', 'admin') DEFAULT 'cliente';
+
+-- Tornar um usuário admin (substitua pelo ID do seu usuário)
+UPDATE clientes SET tipo = 'admin' WHERE id = 1;
