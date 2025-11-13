@@ -12,6 +12,9 @@
         <div class="container">
             <a class="navbar-brand fw-bold" href="{{ url_for('home') }}">
                 <i class="fas fa-clinic-medical me-2"></i>Farmácia Online
+                {% if session.tipo == 'admin' %}
+                    <span class="badge bg-warning text-dark ms-2">Admin</span>
+                {% endif %}
             </a>
             
             <div class="navbar-nav ms-auto">
@@ -23,8 +26,15 @@
                     <a class="nav-link" href="{{ url_for('meus_pedidos') }}">
                         <i class="fas fa-box me-1"></i>Meus Pedidos
                     </a>
+                    
+                    {% if session.tipo == 'admin' %}
+                    <a class="nav-link" href="{{ url_for('adicionar_produto') }}">
+                        <i class="fas fa-plus me-1"></i>Adicionar Produto
+                    </a>
+                    {% endif %}
+                    
                     <div class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-user me-1"></i>{{ session.nome }}
                         </a>
                         <ul class="dropdown-menu">
@@ -46,7 +56,6 @@
     </nav>
 
     <div class="container mt-4">
-        <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}

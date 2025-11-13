@@ -27,7 +27,6 @@
                             <div class="row align-items-center">
                                 <div class="col-md-1">
                                     <div class="text-center py-3 bg-light rounded">
-                                        <!-- IMAGEM DO PRODUTO NO CARRINHO -->
                                         {% if item.imagem and item.imagem != 'default.jpg' %}
                                             <img src="{{ url_for('static', filename='uploads/' + item.imagem) }}" 
                                                  alt="{{ item.nome }}" 
@@ -64,8 +63,7 @@
                                 <div class="col-md-2 text-end">
                                     <strong class="text-primary">R$ {{ "%.2f"|format(item.preco * item.quantidade) }}</strong>
                                     <br>
-                                    <button class="btn btn-danger btn-sm mt-1" 
-                                            onclick="removerDoCarrinho({{ item.id }})">
+                                    <button class="btn btn-danger btn-sm mt-1" onclick="removerDoCarrinho({{ item.id }})">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </div>
@@ -130,13 +128,8 @@ function atualizarQuantidade(produtoId, novaQuantidade) {
     
     fetch('/atualizar-quantidade', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            produto_id: produtoId,
-            quantidade: novaQuantidade
-        })
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({produto_id: produtoId, quantidade: novaQuantidade})
     })
     .then(response => response.json())
     .then(data => {
@@ -162,9 +155,7 @@ function removerDoCarrinho(produtoId) {
 }
 
 function finalizarPedido() {
-    fetch('/finalizar-pedido', {
-        method: 'POST'
-    })
+    fetch('/finalizar-pedido', {method: 'POST'})
     .then(response => response.json())
     .then(data => {
         if (data.success) {
@@ -183,15 +174,9 @@ function showAlert(message, type) {
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
     alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
+    alertDiv.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
     document.body.appendChild(alertDiv);
-    
-    setTimeout(() => {
-        alertDiv.remove();
-    }, 3000);
+    setTimeout(() => alertDiv.remove(), 3000);
 }
 </script>
 {% endblock %}

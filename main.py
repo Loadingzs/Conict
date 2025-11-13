@@ -3,7 +3,6 @@ from flask_mysqldb import MySQL
 import MySQLdb.cursors
 import os
 from werkzeug.utils import secure_filename
-from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
@@ -14,25 +13,22 @@ app.config['MYSQL_PASSWORD'] = '1234'
 app.config['MYSQL_DB'] = 'sistema_farmacia'
 app.secret_key = 'abcd1234'
 
+# Configurações de upload
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 mysql = MySQL(app)
 
-
-
+# Criar pasta de uploads se não existir
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def init_carrinho():
     if 'carrinho' not in session:
         session['carrinho'] = []
-
 
 def calcular_total_carrinho():
     total = 0
@@ -40,6 +36,8 @@ def calcular_total_carrinho():
         total += item['preco'] * item['quantidade']
     return total
 
+def is_admin():
+    return session.get('loggedin') and session.get('tipo') == 'admin'
 
 @app.route("/")
 def home():
@@ -78,30 +76,28 @@ def login():
         cliente = cursor.fetchone()
         cursor.close()
 
-        if cliente:
-            # Verificar senha (sem hash por enquanto - implementar depois)
-            if cliente['senha'] == senha:
-                session['loggedin'] = True
-                session['id'] = cliente['id']
-                session['nome'] = cliente['nome']
-                session['email'] = cliente['email']
-                init_carrinho()
-                flash(f"✅ Bem-vindo(a), {cliente['nome']}!", "success")
-                return redirect(url_for('home'))
+        if cliente and cliente['senha'] == senha:
+            session['loggedin'] = True
+            session['id'] = cliente['id']
+            session['nome'] = cliente['nome']
+            session['email'] = cliente['email']
+            session['tipo'] = cliente.get('tipo', 'cliente')
+            init_carrinho()
+            
+            if session['tipo'] == 'admin':
+                flash(f"👋 Bem-vindo, Admin {cliente['nome']}!", "success")
             else:
-                flash("❌ Senha incorreta!", "danger")
+                flash(f"✅ Bem-vindo, {cliente['nome']}!", "success")
+                
+            return redirect(url_for('home'))
         else:
-            flash("❌ Email não cadastrado!", "danger")
+            flash("❌ Email ou senha incorretos!", "danger")
 
     return render_template("login.html")
 
 @app.route("/logout")
 def logout():
-    session.pop('loggedin', None)
-    session.pop('id', None)
-    session.pop('nome', None)
-    session.pop('email', None)
-    session.pop('carrinho', None)
+    session.clear()
     flash("🔒 Você saiu da sua conta.", "info")
     return redirect(url_for('home'))
 
@@ -115,7 +111,6 @@ def cadastro():
         telefone = request.form.get("telefone", "")
         data_nascimento = request.form.get("data_nascimento", "")
 
-        # Validação básica
         if len(senha) < 6:
             flash("❌ A senha deve ter pelo menos 6 caracteres!", "danger")
             return render_template("cadastro.html")
@@ -124,9 +119,7 @@ def cadastro():
         
         try:
             cursor.execute("SELECT id FROM clientes WHERE email = %s OR cpf = %s", (email, cpf))
-            existing_user = cursor.fetchone()
-
-            if existing_user:
+            if cursor.fetchone():
                 flash("❌ Email ou CPF já cadastrado!", "danger")
             else:
                 cursor.execute("""
@@ -189,7 +182,6 @@ def adicionar_carrinho(produto_id):
     
     init_carrinho()
     
-    # Verificar se produto já está no carrinho
     for item in session['carrinho']:
         if item['id'] == produto_id:
             item['quantidade'] += 1
@@ -200,14 +192,13 @@ def adicionar_carrinho(produto_id):
                 'carrinho_count': len(session['carrinho'])
             })
     
-    # Adicionar novo item COM IMAGEM
     novo_item = {
         'id': produto['id'],
         'nome': produto['nome'],
         'marca': produto['marca'],
         'preco': float(produto['preco_venda']),
         'quantidade': 1,
-        'imagem': produto['imagem']
+        'imagem': produto.get('imagem', 'default.jpg')
     }
     
     session['carrinho'].append(novo_item)
@@ -226,7 +217,6 @@ def remover_carrinho(produto_id):
     
     init_carrinho()
     
-    # Encontrar e remover item
     for i, item in enumerate(session['carrinho']):
         if item['id'] == produto_id:
             session['carrinho'].pop(i)
@@ -253,19 +243,14 @@ def atualizar_quantidade():
     
     init_carrinho()
     
-    # Atualizar quantidade
     for item in session['carrinho']:
         if item['id'] == int(produto_id):
             item['quantidade'] = int(nova_quantidade)
             session.modified = True
-            
-            total_item = item['preco'] * item['quantidade']
-            total_carrinho = calcular_total_carrinho()
-            
             return jsonify({
                 'success': True, 
-                'total_item': total_item,
-                'total_carrinho': total_carrinho
+                'total_item': item['preco'] * item['quantidade'],
+                'total_carrinho': calcular_total_carrinho()
             })
     
     return jsonify({'success': False, 'message': 'Produto não encontrado'})
@@ -283,35 +268,21 @@ def finalizar_pedido():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     
     try:
-        # ✅ VERIFICAR SE O CLIENTE EXISTE NA BASE DE DADOS
         cursor.execute("SELECT id FROM clientes WHERE id = %s", (session['id'],))
-        cliente = cursor.fetchone()
-        
-        if not cliente:
-            session.clear()  # Limpa sessão corrompida
+        if not cursor.fetchone():
+            session.clear()
             return jsonify({'success': False, 'message': 'Cliente não encontrado. Faça login novamente.'})
         
-        # Verificar se cliente tem endereço cadastrado
         cursor.execute("SELECT * FROM enderecos WHERE cliente_id = %s LIMIT 1", (session['id'],))
         endereco = cursor.fetchone()
         
         if not endereco:
-            # Cliente não tem endereço - criar pedido pendente e redirecionar para cadastro de endereço
             total = calcular_total_carrinho()
-            
-            cursor.execute("""
-                INSERT INTO pedidos (cliente_id, total, status) 
-                VALUES (%s, %s, 'pendente')
-            """, (session['id'], total))
-            
+            cursor.execute("INSERT INTO pedidos (cliente_id, total, status) VALUES (%s, %s, 'pendente')", (session['id'], total))
             pedido_id = cursor.lastrowid
             
-            # Adicionar itens do pedido
             for item in session['carrinho']:
-                cursor.execute("""
-                    INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, preco_unitario) 
-                    VALUES (%s, %s, %s, %s)
-                """, (pedido_id, item['id'], item['quantidade'], item['preco']))
+                cursor.execute("INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, preco_unitario) VALUES (%s, %s, %s, %s)", (pedido_id, item['id'], item['quantidade'], item['preco']))
             
             mysql.connection.commit()
             
@@ -322,35 +293,16 @@ def finalizar_pedido():
                 'needs_address': True
             })
         
-        # Cliente já tem endereço - processar pedido normalmente
         total = calcular_total_carrinho()
-        
-        # Criar pedido
-        cursor.execute("""
-            INSERT INTO pedidos (cliente_id, endereco_entrega_id, total, status) 
-            VALUES (%s, %s, %s, 'pendente')
-        """, (session['id'], endereco['id'], total))
-        
+        cursor.execute("INSERT INTO pedidos (cliente_id, endereco_entrega_id, total, status) VALUES (%s, %s, %s, 'pendente')", (session['id'], endereco['id'], total))
         pedido_id = cursor.lastrowid
         
-        # Adicionar itens do pedido
         for item in session['carrinho']:
-            cursor.execute("""
-                INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, preco_unitario) 
-                VALUES (%s, %s, %s, %s)
-            """, (pedido_id, item['id'], item['quantidade'], item['preco']))
-            
-            # Atualizar estoque
-            cursor.execute("""
-                UPDATE estoque 
-                SET quantidade = quantidade - %s 
-                WHERE produto_id = %s
-            """, (item['quantidade'], item['id']))
+            cursor.execute("INSERT INTO pedido_itens (pedido_id, produto_id, quantidade, preco_unitario) VALUES (%s, %s, %s, %s)", (pedido_id, item['id'], item['quantidade'], item['preco']))
+            cursor.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE produto_id = %s", (item['quantidade'], item['id']))
         
-        # Limpar carrinho
         session['carrinho'] = []
         session.modified = True
-        
         mysql.connection.commit()
         
         return jsonify({
@@ -362,20 +314,7 @@ def finalizar_pedido():
         
     except Exception as e:
         mysql.connection.rollback()
-        error_message = str(e)
-        
-        # Detectar especificamente erro de foreign key
-        if '1452' in error_message:
-            return jsonify({
-                'success': False, 
-                'message': 'Erro: Cliente não encontrado. Por favor, faça login novamente.'
-            })
-        else:
-            return jsonify({
-                'success': False, 
-                'message': f'Erro ao finalizar pedido: {error_message}'
-            })
-    
+        return jsonify({'success': False, 'message': f'Erro ao finalizar pedido: {str(e)}'})
     finally:
         cursor.close()
 
@@ -397,11 +336,6 @@ def meus_pedidos():
     cursor.close()
     
     return render_template("meus_pedidos.html", pedidos=pedidos)
-
-@app.route("/carrinho-count")
-def carrinho_count():
-    init_carrinho()
-    return jsonify({'count': len(session['carrinho'])})
 
 @app.route("/pagamento/<int:pedido_id>")
 def pagamento(pedido_id):
@@ -426,19 +360,16 @@ def confirmar_pagamento(pedido_id):
     
     cursor = mysql.connection.cursor()
     try:
-        cursor.execute("UPDATE pedidos SET status = 'pago' WHERE id = %s AND cliente_id = %s", 
-                      (pedido_id, session['id']))
+        cursor.execute("UPDATE pedidos SET status = 'pago' WHERE id = %s AND cliente_id = %s", (pedido_id, session['id']))
         mysql.connection.commit()
-        
         flash("✅ Pagamento confirmado! Seu pedido está sendo processado.", "success")
-        return redirect(url_for('meus_pedidos'))
-        
     except Exception as e:
         mysql.connection.rollback()
         flash(f"❌ Erro ao confirmar pagamento: {str(e)}", "danger")
-        return redirect(url_for('meus_pedidos'))
     finally:
         cursor.close()
+    
+    return redirect(url_for('meus_pedidos'))
 
 @app.route("/salvar-endereco-pagamento", methods=["POST"])
 def salvar_endereco_pagamento():
@@ -457,37 +388,19 @@ def salvar_endereco_pagamento():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     
     try:
-        # Inserir endereço
-        cursor.execute("""
-            INSERT INTO enderecos 
-            (cliente_id, cep, logradouro, numero, complemento, bairro, cidade, estado) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, (session['id'], cep, logradouro, numero, complemento, bairro, cidade, estado))
-        
+        cursor.execute("INSERT INTO enderecos (cliente_id, cep, logradouro, numero, complemento, bairro, cidade, estado) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (session['id'], cep, logradouro, numero, complemento, bairro, cidade, estado))
         endereco_id = cursor.lastrowid
         
-        # Atualizar pedido com endereço e mudar status
-        cursor.execute("""
-            UPDATE pedidos 
-            SET endereco_entrega_id = %s, status = 'pendente' 
-            WHERE id = %s AND cliente_id = %s
-        """, (endereco_id, pedido_id, session['id']))
+        cursor.execute("UPDATE pedidos SET endereco_entrega_id = %s, status = 'pendente' WHERE id = %s AND cliente_id = %s", (endereco_id, pedido_id, session['id']))
         
-        # Atualizar estoque (já que não foi feito antes)
         cursor.execute("SELECT * FROM pedido_itens WHERE pedido_id = %s", (pedido_id,))
         itens = cursor.fetchall()
         
         for item in itens:
-            cursor.execute("""
-                UPDATE estoque 
-                SET quantidade = quantidade - %s 
-                WHERE produto_id = %s
-            """, (item['quantidade'], item['produto_id']))
+            cursor.execute("UPDATE estoque SET quantidade = quantidade - %s WHERE produto_id = %s", (item['quantidade'], item['produto_id']))
         
-        # Limpar carrinho
         session['carrinho'] = []
         session.modified = True
-        
         mysql.connection.commit()
         
         flash("✅ Endereço salvo com sucesso! Redirecionando para pagamento.", "success")
@@ -507,12 +420,13 @@ def endereco_pagamento(pedido_id):
     
     return render_template("endereco.html", pedido_id=pedido_id)
 
+# ========== ROTAS ADMIN ==========
 
 @app.route("/admin/adicionar-produto", methods=["GET", "POST"])
 def adicionar_produto():
-    if 'loggedin' not in session:
-        flash("⚠️ Acesso restrito!", "warning")
-        return redirect(url_for('login'))
+    if not is_admin():
+        flash("⛔ Acesso restrito para administradores!", "danger")
+        return redirect(url_for('home'))
     
     if request.method == "POST":
         nome = request.form["nome"]
@@ -521,13 +435,11 @@ def adicionar_produto():
         preco_venda = request.form["preco_venda"]
         quantidade = request.form["quantidade"]
         
-        # Processar upload da imagem
         imagem = 'default.jpg'
         if 'imagem' in request.files:
             file = request.files['imagem']
             if file and file.filename != '' and allowed_file(file.filename):
                 filename = secure_filename(file.filename)
-                # Adicionar timestamp para evitar conflitos
                 from datetime import datetime
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_")
                 filename = timestamp + filename
@@ -536,24 +448,12 @@ def adicionar_produto():
         
         cursor = mysql.connection.cursor()
         try:
-            # Inserir produto
-            cursor.execute("""
-                INSERT INTO produtos (nome, marca, descricao, preco_venda, imagem) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (nome, marca, descricao, preco_venda, imagem))
-            
+            cursor.execute("INSERT INTO produtos (nome, marca, descricao, preco_venda, imagem) VALUES (%s, %s, %s, %s, %s)", (nome, marca, descricao, preco_venda, imagem))
             produto_id = cursor.lastrowid
-            
-            # Inserir estoque
-            cursor.execute("""
-                INSERT INTO estoque (produto_id, quantidade) 
-                VALUES (%s, %s)
-            """, (produto_id, quantidade))
-            
+            cursor.execute("INSERT INTO estoque (produto_id, quantidade) VALUES (%s, %s)", (produto_id, quantidade))
             mysql.connection.commit()
             flash("✅ Produto adicionado com sucesso!", "success")
             return redirect(url_for('home'))
-            
         except Exception as e:
             mysql.connection.rollback()
             flash(f"❌ Erro ao adicionar produto: {str(e)}", "danger")
@@ -564,9 +464,9 @@ def adicionar_produto():
 
 @app.route("/admin/editar-produto/<int:id>", methods=["GET", "POST"])
 def editar_produto(id):
-    if 'loggedin' not in session:
-        flash("⚠️ Acesso restrito!", "warning")
-        return redirect(url_for('login'))
+    if not is_admin():
+        flash("⛔ Acesso restrito para administradores!", "danger")
+        return redirect(url_for('home'))
     
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     
@@ -577,7 +477,6 @@ def editar_produto(id):
         preco_venda = request.form["preco_venda"]
         quantidade = request.form["quantidade"]
         
-        # Processar upload da nova imagem
         nova_imagem = None
         if 'imagem' in request.files:
             file = request.files['imagem']
@@ -591,40 +490,19 @@ def editar_produto(id):
         
         try:
             if nova_imagem:
-                cursor.execute("""
-                    UPDATE produtos 
-                    SET nome=%s, marca=%s, descricao=%s, preco_venda=%s, imagem=%s 
-                    WHERE id=%s
-                """, (nome, marca, descricao, preco_venda, nova_imagem, id))
+                cursor.execute("UPDATE produtos SET nome=%s, marca=%s, descricao=%s, preco_venda=%s, imagem=%s WHERE id=%s", (nome, marca, descricao, preco_venda, nova_imagem, id))
             else:
-                cursor.execute("""
-                    UPDATE produtos 
-                    SET nome=%s, marca=%s, descricao=%s, preco_venda=%s 
-                    WHERE id=%s
-                """, (nome, marca, descricao, preco_venda, id))
+                cursor.execute("UPDATE produtos SET nome=%s, marca=%s, descricao=%s, preco_venda=%s WHERE id=%s", (nome, marca, descricao, preco_venda, id))
             
-            # Atualizar estoque
-            cursor.execute("""
-                UPDATE estoque 
-                SET quantidade=%s 
-                WHERE produto_id=%s
-            """, (quantidade, id))
-            
+            cursor.execute("UPDATE estoque SET quantidade=%s WHERE produto_id=%s", (quantidade, id))
             mysql.connection.commit()
             flash("✅ Produto atualizado com sucesso!", "success")
             return redirect(url_for('detalhe_produto', id=id))
-            
         except Exception as e:
             mysql.connection.rollback()
             flash(f"❌ Erro ao atualizar produto: {str(e)}", "danger")
     
-    # Carregar dados do produto
-    cursor.execute("""
-        SELECT p.*, e.quantidade 
-        FROM produtos p 
-        LEFT JOIN estoque e ON p.id = e.produto_id 
-        WHERE p.id = %s
-    """, (id,))
+    cursor.execute("SELECT p.*, e.quantidade FROM produtos p LEFT JOIN estoque e ON p.id = e.produto_id WHERE p.id = %s", (id,))
     produto = cursor.fetchone()
     cursor.close()
     

@@ -14,7 +14,6 @@
                             <label for="nome" class="form-label">Nome do Produto *</label>
                             <input type="text" class="form-control" id="nome" name="nome" value="{{ produto.nome }}" required>
                         </div>
-                        
                         <div class="col-md-6 mb-3">
                             <label for="marca" class="form-label">Marca *</label>
                             <input type="text" class="form-control" id="marca" name="marca" value="{{ produto.marca }}" required>
@@ -31,14 +30,12 @@
                             <label for="preco_venda" class="form-label">Preço de Venda *</label>
                             <input type="number" step="0.01" class="form-control" id="preco_venda" name="preco_venda" value="{{ produto.preco_venda }}" required>
                         </div>
-                        
                         <div class="col-md-6 mb-3">
                             <label for="quantidade" class="form-label">Quantidade em Estoque *</label>
                             <input type="number" class="form-control" id="quantidade" name="quantidade" value="{{ produto.quantidade }}" required>
                         </div>
                     </div>
                     
-                    <!-- Imagem atual -->
                     <div class="mb-3">
                         <label class="form-label">Imagem Atual</label>
                         <div class="text-center">
@@ -58,7 +55,7 @@
                     <div class="mb-3">
                         <label for="imagem" class="form-label">Nova Imagem do Produto (opcional)</label>
                         <input type="file" class="form-control" id="imagem" name="imagem" accept="image/*">
-                        <div class="form-text">Deixe em branco para manter a imagem atual. Formatos: JPG, PNG, GIF</div>
+                        <div class="form-text">Deixe em branco para manter a imagem atual</div>
                     </div>
                     
                     <div class="d-grid gap-2">
@@ -76,7 +73,6 @@
 </div>
 
 <script>
-// Preview da nova imagem antes do upload
 document.getElementById('imagem').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (file) {

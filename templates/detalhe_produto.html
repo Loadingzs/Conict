@@ -13,7 +13,6 @@
         <div class="card-body">
             <div class="row">
                 <div class="col-md-6">
-                    <!-- IMAGEM DO PRODUTO -->
                     <div class="text-center py-5 bg-light rounded">
                         {% if produto.imagem and produto.imagem != 'default.jpg' %}
                             <img src="{{ url_for('static', filename='uploads/' + produto.imagem) }}" 
@@ -25,11 +24,9 @@
                         {% endif %}
                     </div>
                     
-                    <!-- Botão editar (apenas para admin) -->
-                    {% if session.loggedin %}
+                    {% if session.tipo == 'admin' %}
                     <div class="text-center mt-3">
-                        <a href="{{ url_for('editar_produto', id=produto.id) }}" 
-                           class="btn btn-warning">
+                        <a href="{{ url_for('editar_produto', id=produto.id) }}" class="btn btn-warning">
                             <i class="fas fa-edit me-2"></i>Editar Produto
                         </a>
                     </div>
@@ -68,8 +65,7 @@
                         
                         <div class="mt-4">
                             {% if produto.quantidade and produto.quantidade > 0 %}
-                            <button onclick="adicionarAoCarrinho({{ produto.id }})" 
-                                    class="btn btn-primary btn-lg w-100 py-3">
+                            <button onclick="adicionarAoCarrinho({{ produto.id }})" class="btn btn-primary btn-lg w-100 py-3">
                                 <i class="fas fa-cart-plus me-2"></i>Adicionar ao Carrinho
                             </button>
                             {% else %}
