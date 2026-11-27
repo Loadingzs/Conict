@@ -36,6 +36,16 @@ def calcular_total_carrinho():
         total += item['preco'] * item['quantidade']
     return total
 
+def inteiro_positivo(valor):
+    # IDs e quantidades usam INT no MySQL. bool e float não representam contagens.
+    if isinstance(valor, bool) or not isinstance(valor, (int, str)):
+        return None
+    try:
+        numero = int(valor)
+    except ValueError:
+        return None
+    return numero if 1 <= numero <= 2_147_483_647 else None
+
 def is_admin():
     return session.get('loggedin') and session.get('tipo') == 'admin'
 
@@ -234,9 +244,12 @@ def atualizar_quantidade():
     if 'loggedin' not in session:
         return jsonify({'success': False, 'message': 'Faça login primeiro'})
     
-    data = request.get_json()
-    produto_id = data.get('produto_id')
-    nova_quantidade = data.get('quantidade')
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'message': 'Dados inválidos'})
+
+    produto_id = inteiro_positivo(data.get('produto_id'))
+    nova_quantidade = inteiro_positivo(data.get('quantidade'))
     
     if not produto_id or not nova_quantidade:
         return jsonify({'success': False, 'message': 'Dados inválidos'})
@@ -244,8 +257,8 @@ def atualizar_quantidade():
     init_carrinho()
     
     for item in session['carrinho']:
-        if item['id'] == int(produto_id):
-            item['quantidade'] = int(nova_quantidade)
+        if item['id'] == produto_id:
+            item['quantidade'] = nova_quantidade
             session.modified = True
             return jsonify({
                 'success': True, 

@@ -6,7 +6,7 @@ Aplicação acadêmica de uma farmácia virtual com **Flask e MySQL**. Reúne ca
 
 - Catálogo com busca por nome ou marca e página de detalhes.
 - Cadastro, login e logout de clientes.
-- Carrinho com inclusão, remoção e alteração de quantidades.
+- Carrinho com inclusão, remoção e alteração de quantidades inteiras positivas.
 - Registro de pedidos e endereço de entrega.
 - Histórico de pedidos do cliente.
 - Confirmação de pagamento simulada, sem integração com uma operadora.
@@ -94,9 +94,26 @@ Conict/
 4. Confirme o pagamento simulado e consulte `/meus-pedidos`.
 5. Com a conta administrativa, cadastre e edite um produto.
 
+## Testes do carrinho sem MySQL
+
+Com o ambiente virtual ativado, instale a dependência de teste e execute:
+
+```bash
+python -m pip install -r requirements-test.txt
+python -m unittest discover -s tests -v
+```
+
+Os 10 testes HTTP usam sessões sintéticas e bloqueiam qualquer conexão ao MySQL. Cobrem
+quantidades negativas, zero, frações, booleanos, valores fora do `INT` do banco, JSON inválido,
+IDs inválidos, sessão não autenticada e atualização dos totais. Inteiros em texto continuam
+aceitos para manter o funcionamento do campo de quantidade da interface. Entradas rejeitadas
+não alteram o carrinho. Não é necessário instalar Flask-MySQLdb para executar esses testes;
+o adaptador é substituído apenas no ambiente de teste. Isso não valida estoque nem a integração
+do checkout com o banco.
+
 ## Estado atual
 
-O projeto usa sessões do Flask e SQL direto; não utiliza Flask-Login nem SQLAlchemy. As senhas de clientes ainda são comparadas e armazenadas em texto simples. A aplicação é um protótipo de estudo: hash de senhas, validações de estoque, proteção dos formulários e testes automatizados são próximos passos.
+O projeto usa sessões do Flask e SQL direto; não utiliza Flask-Login nem SQLAlchemy. As senhas de clientes ainda são comparadas e armazenadas em texto simples. A aplicação é um protótipo de estudo: hash de senhas, validações de estoque, proteção dos formulários e ampliação da cobertura automatizada são próximos passos.
 
 ## Autor
 
